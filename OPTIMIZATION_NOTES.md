@@ -274,8 +274,20 @@ API Call 6: 1173280.6  ← 0.3ms 후 (거의 동시 시작)
 
 병렬 실행을 구현한 후에도 여전히 같은 API를 여러 번 호출하는 문제가 남아있었습니다.
 
-- `fetchMajors()`: 3번 호출
-- `fetchLiberalArts()`: 3번 호출
+**기존 코드:**
+```typescript
+const fetchAllLectures = async () => await Promise.all([
+  (console.log('API Call 1', performance.now()), await fetchMajors()),
+  (console.log('API Call 2', performance.now()), await fetchLiberalArts()),
+  (console.log('API Call 3', performance.now()), await fetchMajors()),      // 중복!
+  (console.log('API Call 4', performance.now()), await fetchLiberalArts()), // 중복!
+  (console.log('API Call 5', performance.now()), await fetchMajors()),      // 중복!
+  (console.log('API Call 6', performance.now()), await fetchLiberalArts()), // 중복!
+]);
+```
+
+- `fetchMajors()`: 3번 호출 (한 번의 함수 호출 내에서)
+- `fetchLiberalArts()`: 3번 호출 (한 번의 함수 호출 내에서)
 
 이로 인해 불필요한 네트워크 요청이 발생하고, 서버 부하와 대역폭 낭비가 발생합니다.
 
@@ -365,27 +377,41 @@ const fetchAllLectures = (() => {
 const fetchAllLectures = (() => {
   const cache = new Map<string, Promise<AxiosResponse<Lecture[]>>>();
   
+  // 캐시 로직을 처리하는 헬퍼 함수
+  const getCachedPromise = (key: string, fetcher: () => Promise<AxiosResponse<Lecture[]>>, callNumber: number) => {
+    let promise = cache.get(key);
+    if (promise) {
+      console.log(`API Call ${callNumber}: ${key} (캐시 사용)`, performance.now());
+    } else {
+      console.log(`API Call ${callNumber}: ${key} (새로 호출)`, performance.now());
+      promise = fetcher();
+      cache.set(key, promise);
+    }
+    return promise;
+  };
+  
   return async () => {
     const majorsKey = 'majors';
     const liberalArtsKey = 'liberal-arts';
     
-    // 캐시에 없으면 새로 호출, 있으면 캐시된 Promise 반환
-    const majorsPromise = cache.get(majorsKey) || fetchMajors();
-    const liberalArtsPromise = cache.get(liberalArtsKey) || fetchLiberalArts();
-    
-    // 첫 호출인 경우 캐시에 저장
-    if (!cache.has(majorsKey)) {
-      cache.set(majorsKey, majorsPromise);
-    }
-    
-    if (!cache.has(liberalArtsKey)) {
-      cache.set(liberalArtsKey, liberalArtsPromise);
-    }
-    
-    return Promise.all([majorsPromise, liberalArtsPromise]);
+    // 원래 코드처럼 6개의 호출을 하되, 캐시를 통해 중복 방지
+    return Promise.all([
+      getCachedPromise(majorsKey, fetchMajors, 1),           // 새로 호출
+      getCachedPromise(liberalArtsKey, fetchLiberalArts, 2), // 새로 호출
+      getCachedPromise(majorsKey, fetchMajors, 3),           // 캐시 사용
+      getCachedPromise(liberalArtsKey, fetchLiberalArts, 4), // 캐시 사용
+      getCachedPromise(majorsKey, fetchMajors, 5),           // 캐시 사용
+      getCachedPromise(liberalArtsKey, fetchLiberalArts, 6), // 캐시 사용
+    ]);
   };
 })();
 ```
+
+**핵심 포인트:**
+- `getCachedPromise` 헬퍼 함수로 캐시 로직을 재사용 가능하게 구현
+- 한 번의 `fetchAllLectures()` 호출 내에서도 중복 API 호출 방지
+- 첫 번째 호출 시 "새로 호출", 이후 호출 시 "캐시 사용" 로그 출력
+- `console.log`는 캐시 동작 확인을 위한 디버깅 목적 (실제 캐시 로직은 `cache.get()`과 `cache.set()`으로 구현)
 
 #### 작동 원리
 
@@ -419,20 +445,22 @@ Promise.all([
 
 **캐시 적용 후:**
 ```typescript
-// 첫 호출
-const promise1 = fetchMajors();      // 네트워크 요청 1 (캐시에 저장)
-const promise2 = fetchLiberalArts(); // 네트워크 요청 2 (캐시에 저장)
+// getCachedPromise 함수 내부에서 처리
+getCachedPromise('majors', fetchMajors, 1)      // 캐시 없음 → 네트워크 요청 1 (캐시에 저장)
+getCachedPromise('liberal-arts', fetchLiberalArts, 2) // 캐시 없음 → 네트워크 요청 2 (캐시에 저장)
+getCachedPromise('majors', fetchMajors, 3)      // 캐시 있음 → 캐시에서 반환 (네트워크 요청 없음)
+getCachedPromise('liberal-arts', fetchLiberalArts, 4) // 캐시 있음 → 캐시에서 반환 (네트워크 요청 없음)
+getCachedPromise('majors', fetchMajors, 5)      // 캐시 있음 → 캐시에서 반환 (네트워크 요청 없음)
+getCachedPromise('liberal-arts', fetchLiberalArts, 6) // 캐시 있음 → 캐시에서 반환 (네트워크 요청 없음)
 
-Promise.all([
-  promise1,  // 캐시에서 가져옴 (네트워크 요청 없음)
-  promise2,  // 캐시에서 가져옴 (네트워크 요청 없음)
-  promise1,  // 캐시에서 가져옴 (네트워크 요청 없음)
-  promise2,  // 캐시에서 가져옴 (네트워크 요청 없음)
-  promise1,  // 캐시에서 가져옴 (네트워크 요청 없음)
-  promise2,  // 캐시에서 가져옴 (네트워크 요청 없음)
-]);
-// 총 2개의 네트워크 요청만 발생
+// 총 2개의 네트워크 요청만 발생 (각 API당 1번씩)
 ```
+
+**실제 동작:**
+- 한 번의 `fetchAllLectures()` 호출 내에서 6개의 항목을 `Promise.all`에 전달
+- `getCachedPromise`가 각 호출마다 캐시를 확인하여 중복 호출 방지
+- 첫 번째와 두 번째 호출: 새로 호출하여 캐시에 저장
+- 세 번째부터 여섯 번째 호출: 캐시된 Promise 재사용
 
 ### 개선 효과
 
@@ -459,15 +487,22 @@ Promise.all([
    - IIFE를 사용하여 private scope 생성
    - 외부에서 접근할 수 없는 private 변수 (cache Map) 생성
    - 함수 호출 간 상태 유지
+   - 헬퍼 함수(`getCachedPromise`)를 통해 캐시 로직 재사용
 
-2. **Promise 재사용**
+2. **한 번의 함수 호출 내에서 중복 방지**
+   - 원래 코드처럼 6개의 API 호출을 `Promise.all`에 전달
+   - 동일한 호출 내에서도 캐시를 통해 중복 네트워크 요청 방지
+   - 첫 번째 호출 시 캐시 저장, 이후 호출 시 캐시 재사용
+
+3. **Promise 재사용**
    - 같은 요청에 대해 Promise를 재사용
    - 이미 실행 중인 Promise도 재사용 가능
    - 네트워크 요청 최소화
 
-3. **메모리 효율적인 캐싱**
+4. **메모리 효율적인 캐싱**
    - Map을 사용한 간단하고 효율적인 캐시 구현
    - 추가 라이브러리 없이 순수 JavaScript로 구현 가능
+   - `console.log`는 캐시 동작 확인을 위한 디버깅 용도 (실제 캐시 로직과는 분리됨)
 
 ### 다른 캐시 구현 방식과의 비교
 

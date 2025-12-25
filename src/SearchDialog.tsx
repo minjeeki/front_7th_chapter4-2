@@ -89,30 +89,30 @@ const fetchLiberalArts = () => axios.get<Lecture[]>('/schedules-liberal-arts.jso
 const fetchAllLectures = (() => {
   const cache = new Map<string, Promise<AxiosResponse<Lecture[]>>>();
   
+  const getCachedPromise = (key: string, fetcher: () => Promise<AxiosResponse<Lecture[]>>, callNumber: number) => {
+    let promise = cache.get(key);
+    if (promise) {
+      console.log(`API Call ${callNumber}: ${key} (캐시 사용)`, performance.now());
+    } else {
+      console.log(`API Call ${callNumber}: ${key} (새로 호출)`, performance.now());
+      promise = fetcher();
+      cache.set(key, promise);
+    }
+    return promise;
+  };
+  
   return async () => {
     const majorsKey = 'majors';
     const liberalArtsKey = 'liberal-arts';
     
-    // 캐시에 없으면 새로 호출, 있으면 캐시된 Promise 반환
-    const majorsPromise = cache.get(majorsKey) || fetchMajors();
-    const liberalArtsPromise = cache.get(liberalArtsKey) || fetchLiberalArts();
-    
-    // 첫 호출인 경우 캐시에 저장
-    if (!cache.has(majorsKey)) {
-      console.log('API Call: fetchMajors (새로 호출)', performance.now());
-      cache.set(majorsKey, majorsPromise);
-    } else {
-      console.log('API Call: fetchMajors (캐시 사용)', performance.now());
-    }
-    
-    if (!cache.has(liberalArtsKey)) {
-      console.log('API Call: fetchLiberalArts (새로 호출)', performance.now());
-      cache.set(liberalArtsKey, liberalArtsPromise);
-    } else {
-      console.log('API Call: fetchLiberalArts (캐시 사용)', performance.now());
-    }
-    
-    return Promise.all([majorsPromise, liberalArtsPromise]);
+    return Promise.all([
+      getCachedPromise(majorsKey, fetchMajors, 1),
+      getCachedPromise(liberalArtsKey, fetchLiberalArts, 2),
+      getCachedPromise(majorsKey, fetchMajors, 3),
+      getCachedPromise(liberalArtsKey, fetchLiberalArts, 4),
+      getCachedPromise(majorsKey, fetchMajors, 5),
+      getCachedPromise(liberalArtsKey, fetchLiberalArts, 6),
+    ]);
   };
 })();
 
