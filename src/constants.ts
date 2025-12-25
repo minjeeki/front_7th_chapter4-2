@@ -1,5 +1,7 @@
 export const DAY_LABELS = ["월", "화", "수", "목", "금", "토"] as const;
 
+export type DayLabel = typeof DAY_LABELS[number];
+
 export const CellSize = {
   WIDTH: 80,
   HEIGHT: 30,

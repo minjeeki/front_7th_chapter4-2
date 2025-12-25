@@ -3,7 +3,7 @@ import ScheduleTable from "./ScheduleTable.tsx";
 import { useScheduleContext } from "./ScheduleContext.tsx";
 import SearchDialog from "./SearchDialog.tsx";
 import { useState, useCallback, useMemo, memo } from "react";
-import { Schedule } from "./types.ts";
+import { Schedule, TimeInfo, DayLabel } from "./types.ts";
 
 // 각 테이블의 schedules를 개별적으로 메모이제이션하는 컴포넌트
 const MemoizedScheduleTableItem = memo(({ 
@@ -18,10 +18,10 @@ const MemoizedScheduleTableItem = memo(({
   onSearchClick,
 }: {
   tableId: string;
-  schedules: Schedule[];
+  schedules: readonly Schedule[];
   index: number;
-  onScheduleTimeClick: (timeInfo: { day: string, time: number }) => void;
-  onDeleteButtonClick: (timeInfo: { day: string, time: number }) => void;
+  onScheduleTimeClick: (timeInfo: TimeInfo) => void;
+  onDeleteButtonClick: (timeInfo: TimeInfo) => void;
   onDuplicate: () => void;
   onRemove: () => void;
   disabledRemoveButton: boolean;
@@ -48,12 +48,12 @@ const MemoizedScheduleTableItem = memo(({
   );
 }, (prevProps: {
   tableId: string;
-  schedules: Schedule[];
+  schedules: readonly Schedule[];
   index: number;
   disabledRemoveButton: boolean;
 }, nextProps: {
   tableId: string;
-  schedules: Schedule[];
+  schedules: readonly Schedule[];
   index: number;
   disabledRemoveButton: boolean;
 }) => {
@@ -72,7 +72,7 @@ export const ScheduleTables = () => {
   const { schedulesMap, setSchedulesMap, updateTableSchedules } = useScheduleContext();
   const [searchInfo, setSearchInfo] = useState<{
     tableId: string;
-    day?: string;
+    day?: DayLabel;
     time?: number;
   } | null>(null);
 
@@ -93,11 +93,11 @@ export const ScheduleTables = () => {
     })
   }, [setSchedulesMap]);
 
-  const handleScheduleTimeClick = useCallback((tableId: string) => (timeInfo: { day: string, time: number }) => {
+  const handleScheduleTimeClick = useCallback((tableId: string) => (timeInfo: TimeInfo) => {
     setSearchInfo({ tableId, ...timeInfo });
   }, []);
 
-  const handleDeleteButtonClick = useCallback((tableId: string) => ({ day, time }: { day: string, time: number }) => {
+  const handleDeleteButtonClick = useCallback((tableId: string) => ({ day, time }: TimeInfo) => {
     updateTableSchedules(tableId, (schedules) => 
       schedules.filter(schedule => schedule.day !== day || !schedule.range.includes(time))
     );

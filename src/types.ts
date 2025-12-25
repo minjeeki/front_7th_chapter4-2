@@ -1,3 +1,6 @@
+import type { DayLabel } from "./constants.ts";
+export type { DayLabel };
+
 export interface Lecture {
   id: string;
   title: string;
@@ -8,8 +11,19 @@ export interface Lecture {
 }
 
 export interface Schedule {
-  lecture: Lecture
+  lecture: Lecture;
+  day: DayLabel;
+  range: readonly number[];
+  room?: string;
+}
+
+export interface TimeInfo {
+  day: DayLabel;
+  time: number;
+}
+
+export interface ParsedScheduleItem {
   day: string;
-  range: number[]
+  range: number[];
   room?: string;
 }

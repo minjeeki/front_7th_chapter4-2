@@ -30,7 +30,7 @@ import {
   Wrap,
 } from "@chakra-ui/react";
 import { useScheduleContext } from "./ScheduleContext.tsx";
-import { Lecture } from "./types.ts";
+import { Lecture, DayLabel } from "./types.ts";
 import { parseSchedule } from "./utils.ts";
 import axios, { AxiosResponse } from "axios";
 import { DAY_LABELS } from "./constants.ts";
@@ -38,19 +38,19 @@ import { DAY_LABELS } from "./constants.ts";
 interface Props {
   searchInfo: {
     tableId: string;
-    day?: string;
+    day?: DayLabel;
     time?: number;
   } | null;
   onClose: () => void;
 }
 
 interface SearchOption {
-  query?: string,
-  grades: number[],
-  days: string[],
-  times: number[],
-  majors: string[],
-  credits?: number,
+  query?: string;
+  grades: readonly number[];
+  days: readonly DayLabel[];
+  times: readonly number[];
+  majors: readonly string[];
+  credits?: number;
 }
 
 const TIME_SLOTS = [
@@ -144,14 +144,14 @@ const LectureRow = React.memo(({ lecture, onAddSchedule }: LectureRowProps) => {
 
 // MajorSelector: 전공 선택을 담당하는 컴포넌트
 interface MajorSelectorProps {
-  majors: string[];
-  selectedMajors: string[];
-  onMajorChange: (majors: string[]) => void;
+  majors: readonly string[];
+  selectedMajors: readonly string[];
+  onMajorChange: (majors: readonly string[]) => void;
 }
 
 const MajorSelector = React.memo(({ majors, selectedMajors, onMajorChange }: MajorSelectorProps) => {
   const handleChange = useCallback((values: (string | number)[]) => {
-    onMajorChange(values as string[]);
+    onMajorChange(values.filter((v): v is string => typeof v === 'string'));
   }, [onMajorChange]);
 
   const handleRemoveMajor = useCallback((major: string) => {
@@ -163,7 +163,7 @@ const MajorSelector = React.memo(({ majors, selectedMajors, onMajorChange }: Maj
       <FormLabel>전공</FormLabel>
       <CheckboxGroup
         colorScheme="green"
-        value={selectedMajors}
+        value={[...selectedMajors]}
         onChange={handleChange}
       >
         <Wrap spacing={1} mb={2}>
@@ -192,7 +192,7 @@ const MajorSelector = React.memo(({ majors, selectedMajors, onMajorChange }: Maj
 
 // LectureTable: 검색 결과 테이블을 담당하는 컴포넌트
 interface LectureTableProps {
-  lectures: Lecture[];
+  lectures: readonly Lecture[];
   loaderWrapperRef: React.RefObject<HTMLDivElement | null>;
   loaderRef: React.RefObject<HTMLDivElement | null>;
   onAddSchedule: (lecture: Lecture) => void;
@@ -236,13 +236,13 @@ const LectureTable = React.memo(({ lectures, loaderWrapperRef, loaderRef, onAddS
 // SearchForm: 검색 옵션 폼을 담당하는 컴포넌트
 interface SearchFormProps {
   searchOptions: SearchOption;
-  allMajors: string[];
-  onSearchOptionChange: (field: keyof SearchOption, value: SearchOption[keyof SearchOption]) => void;
+  allMajors: readonly string[];
+  onSearchOptionChange: <K extends keyof SearchOption>(field: K, value: SearchOption[K]) => void;
 }
 
 const SearchForm = React.memo(({ searchOptions, allMajors, onSearchOptionChange }: SearchFormProps) => {
-  const handleMajorChange = useCallback((majors: string[]) => {
-    onSearchOptionChange('majors', majors);
+  const handleMajorChange = useCallback((majors: readonly string[]) => {
+    onSearchOptionChange('majors', [...majors]);
   }, [onSearchOptionChange]);
 
   return (
@@ -260,8 +260,11 @@ const SearchForm = React.memo(({ searchOptions, allMajors, onSearchOptionChange 
         <FormControl>
           <FormLabel>학점</FormLabel>
           <Select
-            value={searchOptions.credits}
-            onChange={(e) => onSearchOptionChange('credits', e.target.value)}
+            value={searchOptions.credits?.toString() || ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              onSearchOptionChange('credits', value === '' ? undefined : Number.parseInt(value, 10));
+            }}
           >
             <option value="">전체</option>
             <option value="1">1학점</option>
@@ -275,8 +278,8 @@ const SearchForm = React.memo(({ searchOptions, allMajors, onSearchOptionChange 
         <FormControl>
           <FormLabel>학년</FormLabel>
           <CheckboxGroup
-            value={searchOptions.grades}
-            onChange={(value) => onSearchOptionChange('grades', value.map(Number))}
+            value={[...searchOptions.grades]}
+            onChange={(value) => onSearchOptionChange('grades', value.map(Number).filter((n): n is number => !isNaN(n)))}
           >
             <HStack spacing={4}>
               {[1, 2, 3, 4].map(grade => (
@@ -289,8 +292,13 @@ const SearchForm = React.memo(({ searchOptions, allMajors, onSearchOptionChange 
         <FormControl>
           <FormLabel>요일</FormLabel>
           <CheckboxGroup
-            value={searchOptions.days}
-            onChange={(value) => onSearchOptionChange('days', value as string[])}
+            value={[...searchOptions.days]}
+            onChange={(value) => {
+              const validDays = value.filter((v): v is DayLabel => 
+                typeof v === 'string' && DAY_LABELS.includes(v as DayLabel)
+              );
+              onSearchOptionChange('days', validDays);
+            }}
           >
             <HStack spacing={4}>
               {DAY_LABELS.map(day => (
@@ -306,8 +314,8 @@ const SearchForm = React.memo(({ searchOptions, allMajors, onSearchOptionChange 
           <FormLabel>시간</FormLabel>
           <CheckboxGroup
             colorScheme="green"
-            value={searchOptions.times}
-            onChange={(values) => onSearchOptionChange('times', values.map(Number))}
+            value={[...searchOptions.times]}
+            onChange={(values) => onSearchOptionChange('times', values.map(Number).filter((n): n is number => !isNaN(n)))}
           >
             <Wrap spacing={1} mb={2}>
               {[...searchOptions.times].sort((a, b) => a - b).map(time => (
@@ -351,10 +359,10 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
   const [page, setPage] = useState(1);
   const [searchOptions, setSearchOptions] = useState<SearchOption>({
     query: '',
-    grades: [],
-    days: [],
-    times: [],
-    majors: [],
+    grades: [] as number[],
+    days: [] as DayLabel[],
+    times: [] as number[],
+    majors: [] as string[],
   });
 
   // searchOptions나 lectures가 변경될 때만 필터링 수행
@@ -373,7 +381,10 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
           return true;
         }
         const schedules = lecture.schedule ? parseSchedule(lecture.schedule) : [];
-        return schedules.some(s => days.includes(s.day));
+        return schedules.some(s => {
+          const parsedDay = s.day as DayLabel;
+          return DAY_LABELS.includes(parsedDay) && days.includes(parsedDay);
+        });
       })
       .filter(lecture => {
         if (times.length === 0) {
@@ -391,9 +402,12 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
   const visibleLectures = useMemo(() => filteredLectures.slice(0, page * PAGE_SIZE), [filteredLectures, page]);
   
   // lectures가 변경될 때만 계산
-  const allMajors = useMemo(() => [...new Set(lectures.map(lecture => lecture.major))], [lectures]);
+  const allMajors = useMemo(() => [...new Set(lectures.map(lecture => lecture.major))] as readonly string[], [lectures]);
 
-  const changeSearchOption = useCallback((field: keyof SearchOption, value: SearchOption[typeof field]) => {
+  const changeSearchOption = useCallback(<K extends keyof SearchOption>(
+    field: K,
+    value: SearchOption[K]
+  ) => {
     setPage(1);
     setSearchOptions(prev => ({ ...prev, [field]: value }));
     loaderWrapperRef.current?.scrollTo(0, 0);
@@ -404,14 +418,22 @@ const SearchDialog = ({ searchInfo, onClose }: Props) => {
 
     const { tableId } = searchInfo;
 
-    const schedules = parseSchedule(lecture.schedule).map(schedule => ({
-      ...schedule,
-      lecture
-    }));
+    const parsedSchedules = parseSchedule(lecture.schedule);
+    const schedules = parsedSchedules
+      .filter(parsed => {
+        const dayIndex = DAY_LABELS.indexOf(parsed.day as DayLabel);
+        return dayIndex !== -1;
+      })
+      .map(parsed => ({
+        day: parsed.day as DayLabel,
+        range: parsed.range as readonly number[],
+        room: parsed.room,
+        lecture,
+      }));
 
     setSchedulesMap(prev => ({
       ...prev,
-      [tableId]: [...prev[tableId], ...schedules]
+      [tableId]: [...(prev[tableId] || []), ...schedules]
     }));
 
     onClose();

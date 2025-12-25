@@ -22,7 +22,7 @@ export const useScheduleContext = () => {
 };
 
 export const ScheduleProvider = ({ children }: PropsWithChildren) => {
-  const [schedulesMap, setSchedulesMap] = useState<Record<string, Schedule[]>>(dummyScheduleMap);
+  const [schedulesMap, setSchedulesMap] = useState<Record<string, Schedule[]>>(dummyScheduleMap as Record<string, Schedule[]>);
 
   // 특정 테이블의 schedules만 업데이트 (다른 테이블은 기존 참조 유지)
   const updateTableSchedules = useCallback((tableId: string, updater: (prev: Schedule[]) => Schedule[]) => {

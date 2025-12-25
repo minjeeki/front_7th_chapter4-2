@@ -13,7 +13,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { CellSize, DAY_LABELS, 분 } from "./constants.ts";
-import { Schedule } from "./types.ts";
+import { Schedule, TimeInfo } from "./types.ts";
 import { fill2, parseHnM } from "./utils.ts";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -22,9 +22,9 @@ import { useActiveTableId } from "./ScheduleDndProvider.tsx";
 
 interface Props {
   tableId: string;
-  schedules: Schedule[];
-  onScheduleTimeClick?: (timeInfo: { day: string, time: number }) => void;
-  onDeleteButtonClick?: (timeInfo: { day: string, time: number }) => void;
+  schedules: readonly Schedule[];
+  onScheduleTimeClick?: (timeInfo: TimeInfo) => void;
+  onDeleteButtonClick?: (timeInfo: TimeInfo) => void;
 }
 
 const TIMES = [
@@ -184,7 +184,7 @@ const DraggableSchedule = memo(({
 }) => {
   const { day, range, room, lecture } = data;
   const { attributes, setNodeRef, listeners, transform } = useDraggable({ id });
-  const leftIndex = DAY_LABELS.indexOf(day as typeof DAY_LABELS[number]);
+  const leftIndex = DAY_LABELS.indexOf(day);
   const topIndex = range[0] - 1;
   const size = range.length;
 

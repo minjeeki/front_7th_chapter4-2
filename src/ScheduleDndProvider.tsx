@@ -1,6 +1,6 @@
-import { DndContext, Modifier, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragStartEvent, DragEndEvent, Modifier, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { PropsWithChildren, useCallback, useMemo, useState, createContext, useContext, memo } from "react";
-import { CellSize, DAY_LABELS } from "./constants.ts";
+import { CellSize, DAY_LABELS, DayLabel } from "./constants.ts";
 import { useScheduleContext } from "./ScheduleContext.tsx";
 
 // 드래그 중인 테이블 ID만 관리하는 컨텍스트
@@ -47,28 +47,48 @@ function ScheduleDndProvider({ children }: PropsWithChildren) {
     })
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleDragStart = useCallback((event: any) => {
+  const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
-    const [tableId] = String(active.id).split(':');
-    setActiveTableId(tableId);
+    const idString = String(active.id);
+    const [tableId] = idString.split(':');
+    if (tableId) {
+      setActiveTableId(tableId);
+    }
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleDragEnd = useCallback((event: any) => {
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, delta } = event;
-    const { x, y } = delta;
-    const [tableId, index] = String(active.id).split(':');
-    const scheduleIndex = Number(index);
+    if (!delta) {
+      setActiveTableId(null);
+      return;
+    }
+    
+    const idString = String(active.id);
+    const [tableId, index] = idString.split(':');
+    const scheduleIndex = Number.parseInt(index, 10);
+    
+    if (!tableId || isNaN(scheduleIndex)) {
+      setActiveTableId(null);
+      return;
+    }
     
     // 특정 테이블만 업데이트 (다른 테이블은 기존 참조 유지)
     updateTableSchedules(tableId, (schedules) => {
       const schedule = schedules[scheduleIndex];
       if (!schedule) return schedules;
       
-      const nowDayIndex = DAY_LABELS.indexOf(schedule.day as typeof DAY_LABELS[number])
-      const moveDayIndex = Math.floor(x / 80);
-      const moveTimeIndex = Math.floor(y / 30);
+      const nowDayIndex = DAY_LABELS.indexOf(schedule.day);
+      if (nowDayIndex === -1) return schedules;
+      
+      const moveDayIndex = Math.floor(delta.x / CellSize.WIDTH);
+      const moveTimeIndex = Math.floor(delta.y / CellSize.HEIGHT);
+      
+      const newDayIndex = nowDayIndex + moveDayIndex;
+      if (newDayIndex < 0 || newDayIndex >= DAY_LABELS.length) {
+        return schedules;
+      }
+
+      const newDay: DayLabel = DAY_LABELS[newDayIndex];
 
       // 변경된 스케줄만 새로운 객체로, 나머지는 기존 참조 유지
       return schedules.map((targetSchedule, targetIndex) => {
@@ -77,9 +97,9 @@ function ScheduleDndProvider({ children }: PropsWithChildren) {
         }
         return {
           ...targetSchedule,
-          day: DAY_LABELS[nowDayIndex + moveDayIndex],
-          range: targetSchedule.range.map(time => time + moveTimeIndex),
-        }
+          day: newDay,
+          range: [...targetSchedule.range.map(time => time + moveTimeIndex)],
+        };
       });
     });
     
