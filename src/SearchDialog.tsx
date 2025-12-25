@@ -32,7 +32,7 @@ import {
 import { useScheduleContext } from "./ScheduleContext.tsx";
 import { Lecture } from "./types.ts";
 import { parseSchedule } from "./utils.ts";
-import axios from "axios";
+import axios, { AxiosResponse } from "axios";
 import { DAY_LABELS } from "./constants.ts";
 
 interface Props {
@@ -85,18 +85,36 @@ const PAGE_SIZE = 100;
 const fetchMajors = () => axios.get<Lecture[]>('/schedules-majors.json');
 const fetchLiberalArts = () => axios.get<Lecture[]>('/schedules-liberal-arts.json');
 
-// 병렬 실행 최적화: Promise.all에 Promise 객체를 직접 전달하여 병렬 실행되도록 수정
-// TODO: 중복 API 호출 문제는 다음 단계에서 캐시를 통해 해결 예정
-const fetchAllLectures = async () => {
-  return Promise.all([
-    (console.log('API Call 1', performance.now()), fetchMajors()),
-    (console.log('API Call 2', performance.now()), fetchLiberalArts()),
-    (console.log('API Call 3', performance.now()), fetchMajors()),
-    (console.log('API Call 4', performance.now()), fetchLiberalArts()),
-    (console.log('API Call 5', performance.now()), fetchMajors()),
-    (console.log('API Call 6', performance.now()), fetchLiberalArts()),
-  ]);
-};
+// 클로저를 이용한 캐시 메커니즘으로 중복 API 호출 방지 + 병렬 실행
+const fetchAllLectures = (() => {
+  const cache = new Map<string, Promise<AxiosResponse<Lecture[]>>>();
+  
+  return async () => {
+    const majorsKey = 'majors';
+    const liberalArtsKey = 'liberal-arts';
+    
+    // 캐시에 없으면 새로 호출, 있으면 캐시된 Promise 반환
+    const majorsPromise = cache.get(majorsKey) || fetchMajors();
+    const liberalArtsPromise = cache.get(liberalArtsKey) || fetchLiberalArts();
+    
+    // 첫 호출인 경우 캐시에 저장
+    if (!cache.has(majorsKey)) {
+      console.log('API Call: fetchMajors (새로 호출)', performance.now());
+      cache.set(majorsKey, majorsPromise);
+    } else {
+      console.log('API Call: fetchMajors (캐시 사용)', performance.now());
+    }
+    
+    if (!cache.has(liberalArtsKey)) {
+      console.log('API Call: fetchLiberalArts (새로 호출)', performance.now());
+      cache.set(liberalArtsKey, liberalArtsPromise);
+    } else {
+      console.log('API Call: fetchLiberalArts (캐시 사용)', performance.now());
+    }
+    
+    return Promise.all([majorsPromise, liberalArtsPromise]);
+  };
+})();
 
 // LectureRow: 테이블의 각 행을 렌더링하는 컴포넌트
 interface LectureRowProps {
