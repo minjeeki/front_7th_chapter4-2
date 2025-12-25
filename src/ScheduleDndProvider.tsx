@@ -36,7 +36,7 @@ function createSnapModifier(): Modifier {
 const modifiers = [createSnapModifier()]
 
 function ScheduleDndProvider({ children }: PropsWithChildren) {
-  const { setSchedulesMap } = useScheduleContext();
+  const { updateTableSchedules } = useScheduleContext();
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
   
   const sensors = useSensors(
@@ -59,32 +59,32 @@ function ScheduleDndProvider({ children }: PropsWithChildren) {
     const { active, delta } = event;
     const { x, y } = delta;
     const [tableId, index] = String(active.id).split(':');
+    const scheduleIndex = Number(index);
     
-    setSchedulesMap((prev) => {
-      const schedule = prev[tableId]?.[Number(index)];
-      if (!schedule) return prev;
+    // 특정 테이블만 업데이트 (다른 테이블은 기존 참조 유지)
+    updateTableSchedules(tableId, (schedules) => {
+      const schedule = schedules[scheduleIndex];
+      if (!schedule) return schedules;
       
       const nowDayIndex = DAY_LABELS.indexOf(schedule.day as typeof DAY_LABELS[number])
       const moveDayIndex = Math.floor(x / 80);
       const moveTimeIndex = Math.floor(y / 30);
 
-      return {
-        ...prev,
-        [tableId]: prev[tableId].map((targetSchedule, targetIndex) => {
-          if (targetIndex !== Number(index)) {
-            return targetSchedule;
-          }
-          return {
-            ...targetSchedule,
-            day: DAY_LABELS[nowDayIndex + moveDayIndex],
-            range: targetSchedule.range.map(time => time + moveTimeIndex),
-          }
-        })
-      };
+      // 변경된 스케줄만 새로운 객체로, 나머지는 기존 참조 유지
+      return schedules.map((targetSchedule, targetIndex) => {
+        if (targetIndex !== scheduleIndex) {
+          return targetSchedule; // 기존 참조 유지
+        }
+        return {
+          ...targetSchedule,
+          day: DAY_LABELS[nowDayIndex + moveDayIndex],
+          range: targetSchedule.range.map(time => time + moveTimeIndex),
+        }
+      });
     });
     
     setActiveTableId(null);
-  }, [setSchedulesMap]);
+  }, [updateTableSchedules]);
 
   const handleDragCancel = useCallback(() => {
     setActiveTableId(null);
